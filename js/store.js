@@ -152,7 +152,7 @@
       const tmp = document.createElement("div");
       tmp.innerHTML = m.body;
       const words = (tmp.textContent.match(/\S+/g) || []).length;
-      out[m.id] = Math.max(config.minSecondsPerModule, Math.round((words / config.readingSpeedWpm) * 60));
+      out[m.id] = Math.max(config.minSecondsPerModule, Math.round((words / config.readingSpeedWpm) * 60)) + (config.extraSecondsPerModule || 0);
     });
     return out;
   };

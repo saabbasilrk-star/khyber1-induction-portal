@@ -76,7 +76,9 @@
     }
 
     return {
-      rec, id: rec.profile.empId, name: rec.profile.name, area: rec.profile.area, createdAt: rec.profile.createdAt,
+      rec, id: rec.profile.empId, name: rec.profile.name, createdAt: rec.profile.createdAt,
+      team: rec.profile.team || "", area: rec.profile.baseTown || rec.profile.area || "",
+      phone: rec.profile.phone || "", email: rec.profile.email || "",
       perModule, attempts, allowed, passed, modulesDone, quizzesPassed, readingSec,
       totalSec: rec.totalSec || 0, lastSeenAt: rec.lastSeenAt, online, status, cls, activity,
       best: attempts.length ? Math.max(...attempts.map((a) => a.scorePct)) : null,
@@ -256,7 +258,7 @@
   }
 
   const COLS = [
-    ["name", "Manager"], ["area", "Area"], ["modulesDone", "Read"], ["quizzesPassed", "Module quizzes"],
+    ["name", "Manager"], ["area", "Team / Base town"], ["phone", "Contact"], ["modulesDone", "Read"], ["quizzesPassed", "Module quizzes"],
     ["readingSec", "Reading time"], ["totalSec", "Screen time"], ["status", "Final status"], ["best", "Best %"],
     ["attempts", "Attempts"], ["lastSeenAt", "Last active"]
   ];
@@ -264,8 +266,12 @@
   function renderManagers() {
     const body = document.getElementById("tabBody");
     const q = ui.q.trim().toLowerCase();
+    // Phone search ignores formatting and treats +92 / 0092 / 0 prefixes alike.
+    const normPhone = (v) => String(v).replace(/\D/g, "").replace(/^(0092|92)/, "0");
+    const qd = normPhone(q);
     let rows = data.filter((s) =>
-      (!q || [s.name, s.id, s.area].some((v) => String(v).toLowerCase().includes(q))) &&
+      (!q || [s.name, s.id, s.area, s.team, s.phone, s.email].some((v) => String(v).toLowerCase().includes(q))
+        || (qd.length >= 3 && normPhone(s.phone).includes(qd))) &&
       (ui.status === "all" || s.status === ui.status || (ui.status === "online" && s.online)));
     const key = ui.sort;
     const val = (s) => key === "attempts" ? s.attempts.length : key === "status" ? STATUSES.indexOf(s.status) : s[key];
@@ -277,7 +283,7 @@
 
     body.innerHTML = `
       <div class="toolbar">
-        <input type="search" id="searchBox" placeholder="Search name, Employee ID or area" value="${esc(ui.q)}" aria-label="Search managers">
+        <input type="search" id="searchBox" placeholder="Search name, ID, team, town, phone or email" value="${esc(ui.q)}" aria-label="Search managers">
         <select id="statusSel" aria-label="Filter by status">
           <option value="all">All statuses</option>
           <option value="online" ${ui.status === "online" ? "selected" : ""}>Online now</option>
@@ -292,7 +298,8 @@
         <tbody>
         ${rows.map((s) => `<tr class="clickable" data-id="${esc(s.id)}" tabindex="0">
           <td><strong>${esc(s.name)}</strong><div class="small muted">${esc(s.id)}</div></td>
-          <td>${esc(s.area)}</td>
+          <td>${esc(s.team) || "—"}<div class="small muted">${esc(s.area)}</div></td>
+          <td class="small">${s.phone ? esc(s.phone) : `<span class="muted">—</span>`}<div class="muted">${esc(s.email)}</div></td>
           <td><div class="mini-progress"><span style="width:${(s.modulesDone / MODULES.length) * 100}%"></span></div>${s.modulesDone}/${MODULES.length}</td>
           <td>${s.quizzesPassed}/${MODULES.length}</td>
           <td>${hms(s.readingSec)}</td>
@@ -311,7 +318,7 @@
     sb.oninput = () => { ui.q = sb.value; saveUi(); renderManagers(); const s = document.getElementById("searchBox"); s.focus(); s.setSelectionRange(s.value.length, s.value.length); };
     document.getElementById("statusSel").onchange = (e) => { ui.status = e.target.value; saveUi(); renderManagers(); };
     body.querySelectorAll("th[data-sort]").forEach((th) => {
-      const sort = () => { const k = th.dataset.sort; ui.dir = ui.sort === k ? -ui.dir : (["name", "area", "status"].includes(k) ? 1 : -1); ui.sort = k; saveUi(); renderManagers(); };
+      const sort = () => { const k = th.dataset.sort; ui.dir = ui.sort === k ? -ui.dir : (["name", "area", "phone", "status"].includes(k) ? 1 : -1); ui.sort = k; saveUi(); renderManagers(); };
       th.onclick = sort; th.onkeydown = (e) => { if (e.key === "Enter") sort(); };
     });
     body.querySelectorAll("tr[data-id]").forEach((tr) => {
@@ -408,7 +415,9 @@
           <div>
             <a class="small" href="#/">← All managers</a>
             <h1 style="margin-top:6px">${esc(s.name)}</h1>
-            <p class="muted">${esc(s.id)} · ${esc(s.area)} · enrolled ${fmtDate(s.createdAt)}</p>
+            <p class="muted">${esc(s.id)} · ${esc(s.team || "—")} · ${esc(s.area)} · enrolled ${fmtDate(s.createdAt)}</p>
+            <p class="small">${s.phone ? `📞 <a href="tel:${esc(s.phone.replace(/[^\d+]/g, ""))}">${esc(s.phone)}</a>` : `<span class="muted">No cell number yet</span>`}
+              &nbsp;·&nbsp; ${s.email ? `✉ <a href="mailto:${esc(s.email)}">${esc(s.email)}</a>` : `<span class="muted">No email yet</span>`}</p>
           </div>
           <div style="text-align:right">
             <span class="badge ${s.cls}" style="font-size:.9rem">${esc(s.status)}</span>
@@ -504,16 +513,16 @@
 
   // ---------------------------------------------------------------- exports
   function exportSummary() {
-    const head = ["Name", "Employee ID", "Area", "Enrolled", "Last active", "Modules read", "Module quizzes passed", "Reading time (min)", "Screen time (min)",
+    const head = ["Name", "Employee ID", "Team", "Base town", "Cell number", "Email", "Enrolled", "Last active", "Modules read", "Module quizzes passed", "Reading time (min)", "Screen time (min)",
       "Final status", "Best final %", "Final attempts used", "Final attempts allowed", "Failed without reading", "Rushed flag"];
-    const rows = data.map((s) => [s.name, s.id, s.area, fmtDate(s.createdAt), fmtDate(s.lastSeenAt), s.modulesDone, s.quizzesPassed,
+    const rows = data.map((s) => [s.name, s.id, s.team, s.area, s.phone, s.email, fmtDate(s.createdAt), fmtDate(s.lastSeenAt), s.modulesDone, s.quizzesPassed,
       (s.readingSec / 60).toFixed(1), (s.totalSec / 60).toFixed(1), s.status, s.best ?? "", s.attempts.length, s.allowed, s.notReadFails ? "Yes" : "No", s.rushed ? "Yes" : "No"]);
     download(`khyber1-induction-summary-${new Date().toISOString().slice(0, 10)}.csv`, csv([head, ...rows]), "text/csv");
   }
   function exportModules() {
-    const head = ["Name", "Employee ID", "Area", "Module #", "Module", "Screen time (min)", "Required (min)", "Read to end", "Completed at",
+    const head = ["Name", "Employee ID", "Team", "Base town", "Module #", "Module", "Screen time (min)", "Required (min)", "Read to end", "Completed at",
       "Module quiz attempts", "First-try %", "Best %", "Module quiz passed"];
-    const rows = data.flatMap((s) => s.perModule.map((p, i) => [s.name, s.id, s.area, i + 1, p.title, (p.sec / 60).toFixed(1), (p.required / 60).toFixed(1),
+    const rows = data.flatMap((s) => s.perModule.map((p, i) => [s.name, s.id, s.team, s.area, i + 1, p.title, (p.sec / 60).toFixed(1), (p.required / 60).toFixed(1),
       p.scrolledEnd ? "Yes" : "No", fmtDate(p.completedAt), p.quizAttempts.length, p.quizFirst ?? "", p.quizBest ?? "", p.quizPassedAt ? "Yes" : "No"]));
     download(`khyber1-induction-modules-${new Date().toISOString().slice(0, 10)}.csv`, csv([head, ...rows]), "text/csv");
   }

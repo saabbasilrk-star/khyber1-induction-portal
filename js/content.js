@@ -24,6 +24,11 @@ window.CONFIG = {
   // Lower wpm = more time required. Each module also needs at least minSecondsPerModule.
   readingSpeedWpm: 200,
   minSecondsPerModule: 90,
+  // Extra study time added to EVERY module's minimum (on top of the word-count time).
+  extraSecondsPerModule: 90,
+
+  // Team options offered at sign-up (managers can also type their own).
+  teams: ["Khyber-1"],
 
   // If the manager has no mouse/keyboard/scroll activity for this many seconds,
   // the timer pauses (stops people leaving a module open and walking away).
@@ -31,8 +36,8 @@ window.CONFIG = {
 
   // FINAL ASSESSMENT — covers every module.
   quiz: {
-    questionsPerAttempt: 24,   // drawn evenly across all modules from QUESTIONS
-    timeLimitMinutes: 30,
+    questionsPerAttempt: 50,   // drawn evenly across all modules from QUESTIONS
+    timeLimitMinutes: 60,
     passPercent: 70,
     maxAttempts: 3,            // the admin portal can grant extra attempts per manager
     minSecondsPerQuestion: 4,  // answering faster than this on average is flagged as "rushed"
@@ -43,7 +48,7 @@ window.CONFIG = {
 
   // MODULE QUIZ — a short knowledge check unlocked as soon as a module's reading is complete.
   moduleQuiz: {
-    questions: 5,              // per attempt, drawn from that module's questions
+    questions: 10,             // per attempt, drawn from that module's questions
     secondsPerQuestion: 60,    // time limit = questions × this
     passPercent: 70,
     maxAttempts: 0,            // 0 = unlimited retakes
@@ -759,5 +764,147 @@ window.QUESTIONS = [
   { module: "m8", q: "Which competitor is metabolised by CYP3A4 and carries extrapyramidal side effects?",
     options: ["Esomeprazole", "Domperidone", "Moxifloxacin", "Pregabalin"], answer: 1 },
   { module: "m8", q: "Safety of Tepride has not been established in children under…",
-    options: ["2 years", "6 years", "16 years", "21 years"], answer: 2 }
+    options: ["2 years", "6 years", "16 years", "21 years"], answer: 2 },
+
+  /* ======================= Extended bank (so each module quiz has 10+ questions) */
+
+  /* ---- m1 Portfolio */
+  { module: "m1", q: "Which Khyber-1 brand is an antibiotic?",
+    options: ["Tepride", "Mionex", "Esso-NS", "Pegalin-CR"], answer: 1 },
+  { module: "m1", q: "Which Khyber-1 brand is an NSAID + PPI fixed-dose combination?",
+    options: ["Esso 40", "Esso-NS", "Tepride", "Mionex"], answer: 1 },
+  { module: "m1", q: "What is Mionex's tagline?",
+    options: ["Happy Tummy", "Challenge Resolved", "Ultimate Care", "Healthy Life, Healthy Stomach"], answer: 2 },
+  { module: "m1", q: "What is Tepride's tagline?",
+    options: ["Happy Tummy", "Ultimate Care", "Healthy Stomach", "Challenge Resolved"], answer: 0 },
+  { module: "m1", q: "Pegalin-CR belongs to which therapy area?",
+    options: ["Acid control", "Neuropathic pain", "Respiratory infections", "Gut motility"], answer: 1 },
+  { module: "m1", q: "Which two Khyber-1 brands serve the stomach-complaint patient — one controls acid, the other restores motility?",
+    options: ["Esso 40 and Tepride", "Mionex and Esso-NS", "Pegalin-CR and Tepride", "Esso-NS and Mionex"], answer: 0 },
+  { module: "m1", q: "Which brand covers the nerve-pain patient whom NSAIDs do not help?",
+    options: ["Esso-NS", "Pegalin-CR", "Mionex", "Esso 40"], answer: 1 },
+  { module: "m1", q: "Which group of doctors is the main audience for Mionex?",
+    options: ["Chest physicians, ENT, GPs, surgeons and diabetic-foot clinics", "Psychiatrists only", "Dermatologists only", "Dentists only"], answer: 0 },
+  { module: "m1", q: "What is the composition of Tepride?",
+    options: ["Itopride hydrochloride 50 mg", "Domperidone 10 mg", "Esomeprazole 40 mg", "Pregabalin 165 mg"], answer: 0 },
+
+  /* ---- m2 NSAIDs */
+  { module: "m2", q: "About how many people use NSAIDs regularly?",
+    options: ["1 million", "5 million", "17 million", "100 million"], answer: 2 },
+  { module: "m2", q: "What proportion of regular NSAID users are admitted to hospital?",
+    options: ["Less than 1%", "5%–7%", "20%–25%", "50%"], answer: 1 },
+  { module: "m2", q: "How many bones form the human skeletal framework?",
+    options: ["106", "186", "206", "306"], answer: 2 },
+  { module: "m2", q: "Which joints allow the greatest degree of flexibility?",
+    options: ["Fibrous (immovable) joints", "Cartilaginous joints", "Synovial joints", "Sutures"], answer: 2 },
+  { module: "m2", q: "Which is NOT a function of synovial fluid?",
+    options: ["Reducing friction", "Shock absorption", "Transporting nutrients to bone", "Producing red blood cells"], answer: 3 },
+  { module: "m2", q: "COX converts arachidonic acid into…",
+    options: ["Histamine", "Prostaglandins", "Insulin", "Acetylcholine"], answer: 1 },
+  { module: "m2", q: "Selective COX-2 inhibitors (coxibs) have been linked to higher…",
+    options: ["Cardiovascular risk", "Bone fracture risk", "Liver failure", "Hearing loss"], answer: 0 },
+  { module: "m2", q: "Gout typically causes sudden, severe pain in the…",
+    options: ["Spine", "Big toe", "Jaw", "Shoulder blade"], answer: 1 },
+  { module: "m2", q: "Ankylosing spondylitis is arthritis mainly affecting the…",
+    options: ["Spine", "Fingers only", "Knees only", "Jaw"], answer: 0 },
+
+  /* ---- m3 Acid & PPIs */
+  { module: "m3", q: "Which enzyme splits carbonic acid into bicarbonate and H+ in the parietal cell?",
+    options: ["Carbonic anhydrase", "Pepsin", "Cyclo-oxygenase", "Lipase"], answer: 0 },
+  { module: "m3", q: "In the stomach lumen, HCl is formed from…",
+    options: ["H+ and Cl− ions", "Na+ and K+ ions", "Ca2+ and HCO3−", "Pepsin and mucus"], answer: 0 },
+  { module: "m3", q: "Why do PPIs suppress acid whichever receptor is driving it?",
+    options: ["They block histamine only", "The proton pump is the final step of acid secretion", "They neutralise acid in the lumen", "They increase mucus"], answer: 1 },
+  { module: "m3", q: "Inflammation or ulceration of the oesophagus is called…",
+    options: ["Gastroparesis", "Oesophagitis", "Duodenitis", "Colitis"], answer: 1 },
+  { module: "m3", q: "Patients with reflux should avoid meals for how long before lying down?",
+    options: ["15 minutes", "2 hours", "6 hours", "12 hours"], answer: 1 },
+  { module: "m3", q: "Lifestyle advice for reflux: raise the head of the bed by…",
+    options: ["1–2 inches", "6–8 inches", "18–20 inches", "It should be kept flat"], answer: 1 },
+  { module: "m3", q: "Two major causes of peptic ulcers are…",
+    options: ["NSAIDs and Helicobacter pylori", "Vitamin C and calcium", "Exercise and water", "Antacids and milk"], answer: 0 },
+  { module: "m3", q: "Cimetidine and ranitidine belong to which class?",
+    options: ["Proton pump inhibitors", "H2-receptor antagonists", "Prokinetics", "Antacids"], answer: 1 },
+
+  /* ---- m4 Esso 40 */
+  { module: "m4", q: "What is the Esso 40 pack size?",
+    options: ["1 × 10 capsules", "1 × 14 capsules", "2 × 10 capsules", "30 capsules"], answer: 1 },
+  { module: "m4", q: "What is the T-max of esomeprazole?",
+    options: ["15 minutes", "1.5 hours", "6 hours", "12 hours"], answer: 1 },
+  { module: "m4", q: "Esomeprazole protein binding is…",
+    options: ["48%", "60%", "97%", "99%"], answer: 2 },
+  { module: "m4", q: "Esso is contraindicated in known hypersensitivity to esomeprazole or to…",
+    options: ["Penicillins", "Substituted benzimidazoles", "Sulphonamides", "Quinolones"], answer: 1 },
+  { module: "m4", q: "Dose adjustment of Esso in renal impairment is…",
+    options: ["Not necessary", "Halve the dose", "Contra-indicated", "Double the dose"], answer: 0 },
+  { module: "m4", q: "Which is an advantage of esomeprazole over omeprazole?",
+    options: ["Inhibits more gastric proton pumps", "Works on dopamine receptors", "Needs three daily doses", "No liver metabolism"], answer: 0 },
+  { module: "m4", q: "Esomeprazole is metabolised mainly by…",
+    options: ["Flavin monooxygenase", "CYP2C19 and CYP3A4 in the liver", "The kidneys only", "Gut bacteria"], answer: 1 },
+  { module: "m4", q: "In which pregnancy category is esomeprazole?",
+    options: ["Category A", "Category B", "Category D", "Category X"], answer: 1 },
+
+  /* ---- m5 Esso-NS */
+  { module: "m5", q: "Where does the naproxen in Esso-NS dissolve?",
+    options: ["In the mouth", "In the stomach", "In the small intestine", "In the colon"], answer: 2 },
+  { module: "m5", q: "Naproxen peak plasma levels (without food) are reached in…",
+    options: ["15 minutes", "3–5 hours", "12 hours", "24 hours"], answer: 1 },
+  { module: "m5", q: "What is naproxen's half-life?",
+    options: ["1–2 hours", "9–15 hours", "36 hours", "72 hours"], answer: 1 },
+  { module: "m5", q: "For how long may Esso-NS treatment be continued in patients needing higher anti-inflammatory activity?",
+    options: ["Up to 1 week", "Up to 1 month", "Up to 6 months", "Lifelong without review"], answer: 2 },
+  { module: "m5", q: "In the quality-of-life study, what share of patients rated Esso-NS treatment satisfactory?",
+    options: ["24%", "45%", "63%", "90%"], answer: 2 },
+  { module: "m5", q: "Esso-NS's competitive edge over a separate NSAID + PPI prescription is…",
+    options: ["Gastroprotection built into one tablet", "It contains an antibiotic", "It is taken once a week", "It needs no prescription"], answer: 0 },
+
+  /* ---- m6 Mionex */
+  { module: "m6", q: "What is the half-life of moxifloxacin?",
+    options: ["1–2 hours", "6 hours", "11.5–15.6 hours", "48 hours"], answer: 2 },
+  { module: "m6", q: "Protein binding of moxifloxacin is…",
+    options: ["48%", "75%", "90%", "99%"], answer: 0 },
+  { module: "m6", q: "Why was trovafloxacin withdrawn in 1999?",
+    options: ["Poor efficacy", "Liver toxicity and deaths", "Too expensive", "Cardiac arrhythmias only"], answer: 1 },
+  { module: "m6", q: "Topoisomerase IV is needed to…",
+    options: ["Build the bacterial cell wall", "Separate replicated chromosomal DNA into daughter cells", "Make bacterial proteins at the ribosome", "Pump protons"], answer: 1 },
+  { module: "m6", q: "Which atypical organisms does Mionex cover?",
+    options: ["Chlamydia pneumoniae and Mycoplasma pneumoniae", "Only fungi", "Only viruses", "Only anaerobes"], answer: 0 },
+  { module: "m6", q: "What is the Mionex duration for complicated skin and skin-structure infections?",
+    options: ["3 days", "5 days", "7–21 days", "6 weeks"], answer: 2 },
+  { module: "m6", q: "Mionex should be used with caution for tendon effects especially in…",
+    options: ["Children under 5", "Older patients or those on corticosteroids", "Athletes only", "Patients on antacids"], answer: 1 },
+  { module: "m6", q: "Mionex is detailed as effective and well tolerated in uncomplicated…",
+    options: ["PID (pelvic inflammatory disease)", "GERD", "Migraine", "Gout"], answer: 0 },
+
+  /* ---- m7 Pegalin-CR */
+  { module: "m7", q: "What is the elimination half-life of Pegalin-CR?",
+    options: ["About 1 hour", "About 6.3 hours (same as IR)", "About 24 hours", "About 72 hours"], answer: 1 },
+  { module: "m7", q: "Pregabalin increases neuronal GABA by increasing the activity of…",
+    options: ["Glutamic acid decarboxylase (GAD)", "Acetylcholinesterase", "Carbonic anhydrase", "COX-2"], answer: 0 },
+  { module: "m7", q: "What are the most common side effects of pregabalin?",
+    options: ["Drowsiness, dizziness and peripheral oedema", "Hair loss and rash", "Constipation and galactorrhoea", "Tendon rupture"], answer: 0 },
+  { module: "m7", q: "What is the recommended daily pregabalin dose in diabetic peripheral neuropathy?",
+    options: ["75 mg", "150 mg", "300 mg", "900 mg"], answer: 2 },
+  { module: "m7", q: "Fibromyalgia is best described as…",
+    options: ["A bacterial joint infection", "A syndrome of diffuse, widespread body pain", "A stomach ulcer", "Pain after shingles"], answer: 1 },
+  { module: "m7", q: "In the CR pregabalin trial, which improved along with pain control?",
+    options: ["Sleep, anxiety and depression", "Blood pressure only", "Vision", "Kidney function"], answer: 0 },
+  { module: "m7", q: "Pegalin-CR enhances compliance and efficacy by maintaining…",
+    options: ["Consistent plasma concentrations", "Very high peaks after each dose", "Zero absorption at night", "Gastric pH above 4"], answer: 0 },
+
+  /* ---- m8 Tepride */
+  { module: "m8", q: "How quickly does Tepride reach C-max?",
+    options: ["Within 35 minutes", "Within 3 hours", "Within 8 hours", "After 24 hours"], answer: 0 },
+  { module: "m8", q: "What is the half-life of Tepride?",
+    options: ["1 hour", "6 hours", "13 hours", "24 hours"], answer: 1 },
+  { module: "m8", q: "Increased acetylcholine from Tepride has which effect on the lower oesophageal sphincter (LES)?",
+    options: ["Decreases LES pressure", "Increases LES pressure", "No effect", "Paralyses it"], answer: 1 },
+  { module: "m8", q: "Prokinetics enhance GI motility…",
+    options: ["By blocking all contractions", "Without disrupting the rhythm of contractions", "By neutralising acid", "By killing bacteria"], answer: 1 },
+  { module: "m8", q: "Which competitor is linked to hormonal effects such as amenorrhoea, gynaecomastia and galactorrhoea?",
+    options: ["Tepride", "Levosulpiride", "Esomeprazole", "Moxifloxacin"], answer: 1 },
+  { module: "m8", q: "Cinitapride acts mainly on which receptors?",
+    options: ["Serotonin (5-HT1, 5-HT4 agonist; 5-HT2 antagonist)", "Proton pump", "α2δ calcium channel", "COX-1"], answer: 0 },
+  { module: "m8", q: "Should Tepride be used during pregnancy?",
+    options: ["Yes, it is first choice", "No — no adequate studies, so it should not be used", "Only in the 3rd trimester", "Only at double dose"], answer: 1 }
 ];

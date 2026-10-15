@@ -432,13 +432,70 @@
 
   const pinOk = (p) => /^\d{4,6}$/.test(p);
 
+  // ---- profile fields (shared by sign-up and "complete your profile")
+  const town = (p) => p.baseTown || p.area || "";
+  const phoneOk = (v) => /^(92|0)?3\d{9}$/.test(v.replace(/\D/g, ""));
+  const emailOk = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
+  const profileIncomplete = (p) => !(p.name && p.team && town(p) && p.phone && p.email);
+
+  function profileFieldsHtml(p) {
+    p = p || {};
+    const teams = (CFG.teams && CFG.teams.length ? CFG.teams : [CFG.teamName]);
+    return `
+      <div class="field"><label for="fName">Full name</label><input id="fName" type="text" required maxlength="80" autocomplete="name" value="${esc(p.name || "")}"></div>
+      <div class="field"><label for="fTeam">Team</label>
+        <input id="fTeam" type="text" required maxlength="40" list="teamList" value="${esc(p.team || teams[0])}">
+        <datalist id="teamList">${teams.map((t) => `<option value="${esc(t)}">`).join("")}</datalist></div>
+      <div class="field"><label for="fTown">Base town</label><input id="fTown" type="text" required maxlength="60" value="${esc(town(p))}"></div>
+      <div class="field"><label for="fPhone">Cell number</label><input id="fPhone" type="tel" required maxlength="20" inputmode="tel" autocomplete="tel" placeholder="03XX-XXXXXXX" value="${esc(p.phone || "")}"></div>
+      <div class="field"><label for="fEmail">Email address</label><input id="fEmail" type="email" required maxlength="100" autocomplete="email" placeholder="name@example.com" value="${esc(p.email || "")}"></div>`;
+  }
+
+  /** Reads and validates the profile fields; shows a message and returns null if invalid. */
+  function readProfileFields() {
+    const v = (id) => document.getElementById(id).value.trim();
+    const p = { name: v("fName"), team: v("fTeam"), baseTown: v("fTown"), phone: v("fPhone"), email: v("fEmail").toLowerCase() };
+    const bad = (field, msg) => { modal("Please check your details", `<p>${msg}</p>`, [{ label: "OK", onClick: () => document.getElementById(field).focus() }]); return null; };
+    if (p.name.length < 3) return bad("fName", "Please enter your full name.");
+    if (!p.team) return bad("fTeam", "Please enter your team.");
+    if (!p.baseTown) return bad("fTown", "Please enter your base town.");
+    if (!phoneOk(p.phone)) return bad("fPhone", "Please enter a valid mobile number, e.g. <strong>0300-1234567</strong>.");
+    if (!emailOk(p.email)) return bad("fEmail", "Please enter a valid email address, e.g. <strong>name@example.com</strong>.");
+    p.area = p.baseTown; // kept for older records/exports
+    return p;
+  }
+
+  /** After a successful PIN check: ask for any missing profile details, then start. */
+  function proceed(rec) {
+    if (profileIncomplete(rec.profile)) return renderCompleteProfile(rec);
+    beginSession(rec, false);
+  }
+
+  function renderCompleteProfile(rec) {
+    loginShell(`
+      <h2>Complete your profile</h2>
+      <p class="small muted">${esc(rec.profile.empId)} — we now ask every manager for these details. Your progress is safe.</p>
+      <form id="cpForm" autocomplete="off" novalidate>
+        ${profileFieldsHtml(rec.profile)}
+        <button class="btn" type="submit" id="cpBtn">Save &amp; continue</button>
+      </form>`);
+    document.getElementById("cpForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const p = readProfileFields();
+      if (!p) return;
+      const btn = document.getElementById("cpBtn"); btn.disabled = true;
+      rec.profile = Object.assign({}, rec.profile, p, { profileUpdatedAt: Date.now() });
+      try { await Store.updateManager(rec.profile.empId, { profile: rec.profile }); } catch { /* synced later with the rest */ }
+      beginSession(rec, false);
+    };
+  }
+
   function renderRegister(id) {
     loginShell(`
       <h2>Create your profile</h2>
       <p class="small muted">Employee ID <strong>${esc(id)}</strong> is new. <a href="#/" id="backLink">Use a different ID</a></p>
-      <form id="regForm" autocomplete="off">
-        <div class="field"><label for="fName">Full name</label><input id="fName" type="text" required maxlength="80"></div>
-        <div class="field"><label for="fArea">Area / Base city</label><input id="fArea" type="text" required maxlength="60"></div>
+      <form id="regForm" autocomplete="off" novalidate>
+        ${profileFieldsHtml()}
         <div class="field"><label for="fPin">Choose a PIN (4–6 digits)</label><input id="fPin" type="password" inputmode="numeric" required maxlength="6"></div>
         <div class="field"><label for="fPin2">Confirm PIN</label><input id="fPin2" type="password" inputmode="numeric" required maxlength="6"></div>
         <p class="small muted">You'll use this PIN to resume your induction later. Don't share it.</p>
@@ -448,14 +505,14 @@
     document.getElementById("fName").focus();
     document.getElementById("regForm").onsubmit = async (e) => {
       e.preventDefault();
-      const name = document.getElementById("fName").value.trim();
-      const area = document.getElementById("fArea").value.trim();
+      const profile = readProfileFields();
+      if (!profile) return;
       const pin = document.getElementById("fPin").value.trim();
       if (!pinOk(pin)) return modal("Invalid PIN", "<p>The PIN must be 4 to 6 digits.</p>", [{ label: "OK" }]);
       if (pin !== document.getElementById("fPin2").value.trim()) return modal("PINs don't match", "<p>Please re-enter the same PIN twice.</p>", [{ label: "OK" }]);
       const btn = document.getElementById("regBtn"); btn.disabled = true; btn.textContent = "Creating…";
       try {
-        const rec = newRecord({ name, empId: id, area, createdAt: Date.now() }, await Store.hashPin(id, pin));
+        const rec = newRecord(Object.assign({ empId: id, createdAt: Date.now() }, profile), await Store.hashPin(id, pin));
         await Store.createManager(JSON.parse(JSON.stringify(rec)));
         beginSession(rec, true);
       } catch (err) {
@@ -468,7 +525,7 @@
   function renderPin(rec) {
     loginShell(`
       <h2>Welcome back, ${esc(rec.profile.name.split(" ")[0])}</h2>
-      <p class="small muted">${esc(rec.profile.empId)} · ${esc(rec.profile.area)} · <a href="#/" id="backLink">Not you?</a></p>
+      <p class="small muted">${esc(rec.profile.empId)} · ${esc(town(rec.profile))} · <a href="#/" id="backLink">Not you?</a></p>
       <form id="pinForm" autocomplete="off">
         <div class="field"><label for="fPin">Your PIN</label><input id="fPin" type="password" inputmode="numeric" required maxlength="6"></div>
         <button class="btn" type="submit">Resume induction</button>
@@ -483,7 +540,7 @@
         document.getElementById("fPin").value = "";
         return modal("Incorrect PIN", "<p>That PIN doesn't match. Try again, or ask your administrator to reset it.</p>", [{ label: "OK" }]);
       }
-      beginSession(rec, false);
+      proceed(rec);
     };
   }
 
@@ -505,7 +562,7 @@
       try {
         rec.pinHash = await Store.hashPin(rec.profile.empId, pin);
         await Store.updateManager(rec.profile.empId, { pinHash: rec.pinHash });
-        beginSession(rec, false);
+        proceed(rec);
       } catch (err) { modal("Couldn't save your PIN", `<p>${esc(err.message || err)}</p>`, [{ label: "OK" }]); }
     };
   }
@@ -544,7 +601,7 @@
     app.innerHTML = `
       <section class="card">
         <h1>Welcome, ${esc(user.profile.name.split(" ")[0])}</h1>
-        <p class="muted">${esc(CFG.programmeTitle)} · ${esc(user.profile.area)}</p>
+        <p class="muted">${esc(CFG.programmeTitle)} · ${esc(user.profile.team || CFG.teamName)} · ${esc(town(user.profile))}</p>
         <div class="progress" aria-label="Reading progress"><span style="width:${(done / MODULES.length) * 100}%"></span></div>
         <div class="stats">
           <div class="stat"><div class="k">Modules read</div><div class="v">${done} / ${MODULES.length}</div></div>
@@ -960,7 +1017,7 @@
         <h2>Certificate of Completion</h2>
         <p>This certifies that</p>
         <div class="cert-name">${esc(user.profile.name)}</div>
-        <p>Employee ID ${esc(user.profile.empId)} · ${esc(user.profile.area)}</p>
+        <p>Employee ID ${esc(user.profile.empId)} · ${esc(user.profile.team || CFG.teamName)} · ${esc(town(user.profile))}</p>
         <p>has successfully completed the<br><strong>${esc(CFG.programmeTitle)}</strong></p>
         <p>Score <strong>${a.scorePct}%</strong> · Reading time ${hms(a.readingSec)} · ${new Date(a.submittedAt).toLocaleDateString()}</p>
       </section>
@@ -987,6 +1044,7 @@
         await Store.ensureManagerAuth();
         const { rec } = await loadRecord(id);
         if (rec) {
+          if (profileIncomplete(rec.profile)) return renderCompleteProfile(rec);
           // Same-device reload / reopening the tab: resume silently at the saved position.
           user = normalize(rec);
           const r = user.resume;

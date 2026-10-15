@@ -12,18 +12,19 @@ It's a static site (HTML/CSS/JS, no build step), so you can host it on **GitHub 
 | Feature | How it works |
 |---|---|
 | Sign-in | Employee ID plus a 4–6 digit PIN that the manager chooses the first time. The PIN stops anyone else from opening a manager's induction. Admins can reset it. |
+| Profile | At sign-up: **Name, Team, Base Town, Cell Number** (Pakistani mobile, e.g. 0300-1234567) **and Email**, all validated. Managers registered before these fields existed are asked for the missing details at their next sign-in. |
 | Exact resume | Closing the page, signing out or switching device, then signing back in, returns the manager to **the same module and scroll position**. A quiz in progress resumes on **the same question with all answers kept**. Progress is saved locally every few seconds, synced to the cloud every `syncSeconds`, and saved immediately when the page is hidden or closed. |
 | One window at a time | If the induction is opened in a second window or device, the first one stops recording and offers "Continue in this window". This stops two copies overwriting each other's screen time. |
 | Screen timer | Counts **active** time only: the tab must be visible and focused, with activity in the last 90 s. |
-| Module reading | Each module has a minimum active reading time (from its word count) and must be scrolled to the end. |
-| **Module quiz** | Unlocks **as soon as a module's reading is complete** (button at the end of the module and on the dashboard). 5 questions from that module, 1 minute per question, 70% to pass, unlimited retakes. The timer pauses if the page is closed. |
-| Final assessment | 24 questions, exactly 3 from each module; 30 minutes; 70% to pass; 3 attempts (admins can grant more). Attempting it without completing the reading is an automatic **FAIL**. Optionally, it can also require every module quiz to be passed (`requireModuleQuizzesForFinal`). The clock keeps running if the page is closed, so it can't be paused to look up answers. |
+| Module reading | Each module has a minimum active reading time (from its word count, plus `extraSecondsPerModule` = 90 s) and must be scrolled to the end. That's about 30 minutes for all 8 modules. |
+| **Module quiz** | Unlocks **as soon as a module's reading is complete** (button at the end of the module and on the dashboard). **10 questions** from that module, 1 minute per question, 70% to pass, unlimited retakes. The timer pauses if the page is closed. |
+| Final assessment | **50 questions**, 6–7 from each module; 60 minutes; 70% to pass; 3 attempts (admins can grant more). Attempting it without completing the reading is an automatic **FAIL**. Optionally, it can also require every module quiz to be passed (`requireModuleQuizzesForFinal`). The clock keeps running if the page is closed, so it can't be paused to look up answers. |
 | Results | Score, PASS/FAIL with the reason, and a score per module. Correct answers are shown only after passing. Printable certificate. |
 
 ## Admin portal (`admin.html`)
 
 - **Live KPIs**: managers enrolled, online now, reading complete, all module quizzes passed, final passed, failed for not reading, average reading time.
-- **Managers table**: one row per manager showing modules read, module quizzes passed, reading time, total screen time, final status, best score, attempts, last active, and what they're doing **right now** (e.g. "Reading M5: Esso-NS"). You can search, filter by status or "online now", and sort any column. It updates live.
+- **Managers table**: one row per manager showing team, base town, cell number, email, modules read, module quizzes passed, reading time, total screen time, final status, best score, attempts, last active, and what they're doing **right now** (e.g. "Reading M5: Esso-NS"). You can search (name, ID, team, town, phone or email), filter by status or "online now", and sort any column. It updates live.
 - **Manager detail** (click a row):
   - per module: screen time against the requirement, whether they read to the end, completion time, module-quiz attempts, first-try and best score
   - every final attempt with its reason, duration, flags (rushed, timed out) and per-module score
@@ -31,7 +32,7 @@ It's a static site (HTML/CSS/JS, no build step), so you can host it on **GitHub 
   - actions: **grant an extra final attempt**, **reset PIN**, **download the full record**, **delete the record**
 - **Module analytics**: completion, average reading time, module-quiz pass rate, average first-try and best scores, and final-assessment accuracy for each module. This shows which product needs more coaching.
 - **Question analytics**: every question, hardest first, with its % correct and the **most common wrong answer**.
-- **CSV exports**: a summary (one row per manager) and module detail (one row per manager × module).
+- **CSV exports**: a summary with contact details (one row per manager) and module detail (one row per manager × module).
 
 ## Two modes
 
@@ -79,9 +80,9 @@ If you want to reuse the existing `johari-workshop` Firebase project, you can, b
 
 Everything is in **[`js/content.js`](js/content.js)**:
 
-- `CONFIG`: reading speed, idle timeout, `quiz` (final assessment), `moduleQuiz`, `requireModuleQuizzesForFinal`, `syncSeconds`, `adminPasscode`
+- `CONFIG`: reading speed, `extraSecondsPerModule`, `teams`, idle timeout, `quiz` (final assessment), `moduleQuiz`, `requireModuleQuizzesForFinal`, `syncSeconds`, `adminPasscode`
 - `MODULES`: the reading material (HTML allowed). Images are in `assets/img/`.
-- `QUESTIONS`: the quiz bank. `answer` is the **0-based** index of the correct option, and `module` links the question to its module. Keep at least `moduleQuiz.questions` questions per module.
+- `QUESTIONS`: the quiz bank. `answer` is the **0-based** index of the correct option, and `module` links the question to its module. Keep at least `moduleQuiz.questions` (10) questions per module. The bank currently has 114 questions, 13–15 per module.
 
 The content comes from `Induction Training Product Presentations\Khyber - 1` and covers **Esso 40 Capsule, Esso-NS, Mionex Tablet, Pegalin-CR and Tepride**.
 
