@@ -28,7 +28,7 @@ window.CONFIG = {
   extraSecondsPerModule: 90,
 
   // Team options offered at sign-up (managers can also type their own).
-  teams: ["Khyber-1"],
+  teams: ["Khyber-1","Khyber-2","Khyber-3","Elantis"],
 
   // If the manager has no mouse/keyboard/scroll activity for this many seconds,
   // the timer pauses (stops people leaving a module open and walking away).
@@ -37,7 +37,7 @@ window.CONFIG = {
   // FINAL ASSESSMENT — covers every module.
   quiz: {
     questionsPerAttempt: 50,   // drawn evenly across all modules from QUESTIONS
-    timeLimitMinutes: 60,
+    timeLimitMinutes: 30,
     passPercent: 70,
     maxAttempts: 3,            // the admin portal can grant extra attempts per manager
     minSecondsPerQuestion: 4,  // answering faster than this on average is flagged as "rushed"
@@ -51,7 +51,7 @@ window.CONFIG = {
     questions: 10,             // per attempt, drawn from that module's questions
     secondsPerQuestion: 60,    // time limit = questions × this
     passPercent: 70,
-    maxAttempts: 0,            // 0 = unlimited retakes
+    maxAttempts: 3,            // 0 = unlimited retakes
     timerPausesWhenClosed: true // resumes with the same time left after closing the page
   },
 
