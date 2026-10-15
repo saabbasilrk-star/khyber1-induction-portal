@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Khyber-1 FLM Induction</title>
+  <meta name="description" content="Product-knowledge induction programme and assessment for Khyber-1 First Line Managers.">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">K1</span>
+      <div>
+        <div class="brand-title" id="brandTitle">FLM Induction</div>
+        <div class="brand-sub" id="brandSub"></div>
+      </div>
+    </div>
+    <div class="topbar-right" id="topbarRight" hidden>
+      <div class="screen-timer" title="Active screen time (pauses when idle or the tab is hidden)">
+        <span class="dot" id="timerDot"></span>
+        <span class="timer-label">Screen time</span>
+        <span class="timer-value" id="screenTime">00:00:00</span>
+      </div>
+      <span class="sync-chip" id="syncState" data-state="local" title="Where your progress is saved"></span>
+      <div class="user-chip" id="userChip"></div>
+      <button class="btn ghost small" id="logoutBtn">Sign out</button>
+    </div>
+  </header>
+
+  <main id="app" class="container"></main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <div class="modal-backdrop" id="modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <h3 id="modalTitle"></h3>
+      <div id="modalBody"></div>
+      <div class="modal-actions" id="modalActions"></div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <span id="footerText"></span>
+  </footer>
+
+  <script src="js/firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+  <script src="js/content.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
