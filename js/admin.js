@@ -176,7 +176,12 @@
         start(await Store.currentAdmin());
       } catch (err) {
         btn.disabled = false;
-        modal("Sign-in failed", `<p>${esc(cloud ? "Email or password is incorrect, or this account isn't an administrator." : err.message)}</p>`, [{ label: "OK" }]);
+        const code = err.code || "";
+        const msg = !cloud ? err.message
+          : /configuration-not-found|operation-not-allowed/.test(code) ? "Email/Password sign-in isn't enabled. In the Firebase console open Authentication → Get started, then enable the Email/Password provider and add your admin user under Users."
+          : /too-many-requests/.test(code) ? "Too many attempts. Please wait a few minutes and try again."
+          : "Email or password is incorrect, or this account doesn't exist yet (add it under Firebase → Authentication → Users).";
+        modal("Sign-in failed", `<p>${esc(msg)}</p>${code ? `<p class="small muted">${esc(code)}</p>` : ""}`, [{ label: "OK" }]);
       }
     };
   }

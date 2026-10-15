@@ -397,7 +397,13 @@
     document.getElementById("fEmp").focus();
     f.onsubmit = async (e) => {
       e.preventDefault();
-      const id = document.getElementById("fEmp").value.trim().toUpperCase().replace(/[\/\s]+/g, "-");
+      const raw = document.getElementById("fEmp").value.trim();
+      if (raw.includes("@")) {
+        return modal("That looks like an email address",
+          `<p>Managers sign in here with their <strong>Employee ID</strong>.</p>
+           <p>Administrators: sign in with your email and password on the <a href="admin.html">Admin portal</a>.</p>`, [{ label: "OK" }]);
+      }
+      const id = raw.toUpperCase().replace(/[\/\s]+/g, "-");
       if (!id) return;
       const btn = document.getElementById("idBtn");
       btn.disabled = true; btn.textContent = "Checking…";
@@ -412,7 +418,14 @@
         renderRegister(id);
       } catch (err) {
         btn.disabled = false; btn.textContent = "Continue";
-        modal("Sign-in problem", `<p>${esc(err.message || err)}</p><p class="small muted">If this persists, ask your administrator to check the Firebase setup (Anonymous sign-in must be enabled).</p>`, [{ label: "OK" }]);
+        const setup = /configuration-not-found|operation-not-allowed|admin-restricted-operation/.test(err.code || err.message || "");
+        const denied = /permission-denied|insufficient permissions/i.test(err.code || err.message || "");
+        modal("Sign-in problem", setup
+          ? `<p>The portal's sign-in service isn't switched on yet.</p><p class="small muted">Administrator: in the Firebase console open <strong>Authentication → Get started</strong>, then enable the <strong>Anonymous</strong> and <strong>Email/Password</strong> sign-in providers. (${esc(err.code || "")})</p>`
+          : denied
+          ? `<p>The database refused access.</p><p class="small muted">Administrator: publish the security rules from the README under <strong>Firestore Database → Rules</strong> (not Realtime Database).</p>`
+          : `<p>${esc(err.message || err)}</p><p class="small muted">Check your internet connection and try again. If this persists, ask your administrator to check the Firebase setup.</p>`,
+          [{ label: "OK" }]);
       }
     };
   }
