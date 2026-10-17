@@ -1,17 +1,24 @@
-/* Khyber-1 Induction — admin portal.
-   Live view of every manager: reading/screen time per module, module quizzes,
-   final assessment results, what they're doing right now, plus module and
-   question analytics, CSV exports and admin actions. */
+/* Shaigan Managerial Induction Training Portal — admin portal.
+   Live view of every manager (all teams): reading/screen time per module,
+   module quizzes, final assessment results, what they're doing right now,
+   plus per-team module and question analytics, CSV exports and admin actions. */
 (function () {
   "use strict";
 
   const CFG = window.CONFIG;
-  const MODULES = window.MODULES;
-  const QUESTIONS = window.QUESTIONS;
   const Store = window.K1Store;
   const FQ = CFG.quiz;
   const MQ = Object.assign({ passPercent: 70 }, CFG.moduleQuiz || {});
-  const requiredSec = Store.requiredSeconds(MODULES, CFG);
+  const EMPTY = { modules: [], questions: [], required: {} };
+  const teamCache = {};
+  /** A team's modules, questions and required reading seconds (empty if the team has no content yet). */
+  function tc(team) {
+    if (teamCache[team]) return teamCache[team];
+    const c = window.K1Content.teams[team];
+    if (!c) return EMPTY;
+    return (teamCache[team] = { modules: c.modules, questions: c.questions, required: Store.requiredSeconds(c.modules, CFG) });
+  }
+  const teamsWithContent = () => Store.teamNames().filter((t) => window.K1Content.teams[t]);
   const ONLINE_MS = Math.max(60, (CFG.syncSeconds || 20) * 3) * 1000;
   const app = document.getElementById("app");
 
@@ -30,19 +37,21 @@
     if (s < 86400) return `${Math.round(s / 3600)} h ago`;
     return `${Math.round(s / 86400)} d ago`;
   };
-  const modById = (id) => MODULES.find((m) => m.id === id);
-  const modIndex = (id) => MODULES.findIndex((m) => m.id === id);
   const avg = (a) => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
 
   // ---------------------------------------------------------------- derived data
   function summarize(rec) {
+    const team = rec.profile.team || "";
+    const T = tc(team);
+    const modById = (id) => T.modules.find((x) => x.id === id);
+    const modIndex = (id) => T.modules.findIndex((x) => x.id === id);
     const mods = rec.modules || {};
     const m = (id) => Object.assign({ sec: 0, scrolledEnd: false, completedAt: null, quiz: { attempts: [], passedAt: null } }, mods[id] || {});
-    const perModule = MODULES.map((mm) => {
+    const perModule = T.modules.map((mm) => {
       const s = m(mm.id);
       const qa = (s.quiz && s.quiz.attempts) || [];
       return {
-        id: mm.id, title: mm.title, required: requiredSec[mm.id], sec: s.sec || 0, scrolledEnd: !!s.scrolledEnd,
+        id: mm.id, title: mm.title, required: T.required[mm.id], sec: s.sec || 0, scrolledEnd: !!s.scrolledEnd,
         completedAt: s.completedAt, firstOpenedAt: s.firstOpenedAt,
         quizAttempts: qa, quizBest: qa.length ? Math.max(...qa.map((a) => a.scorePct)) : null,
         quizFirst: qa.length ? qa[0].scorePct : null, quizPassedAt: s.quiz && s.quiz.passedAt
@@ -58,11 +67,12 @@
     const aq = rec.activeQuiz;
 
     let status, cls;
-    if (passed) { status = "Passed"; cls = "ok"; }
+    if (!T.modules.length) { status = "Awaiting team content"; cls = "neutral"; }
+    else if (passed) { status = "Passed"; cls = "ok"; }
     else if (aq && aq.kind === "final") { status = "In final assessment"; cls = "info"; }
     else if (attempts.length && attempts.length >= allowed) { status = "Failed — no attempts left"; cls = "bad"; }
     else if (attempts.length) { status = "Failed — can retake"; cls = "bad"; }
-    else if (modulesDone === MODULES.length) { status = "Ready for final"; cls = "info"; }
+    else if (modulesDone === T.modules.length) { status = "Ready for final"; cls = "info"; }
     else if (readingSec > 0) { status = "Reading"; cls = "warn"; }
     else { status = "Not started"; cls = "neutral"; }
 
@@ -77,7 +87,7 @@
 
     return {
       rec, id: rec.profile.empId, name: rec.profile.name, createdAt: rec.profile.createdAt,
-      team: rec.profile.team || "", area: rec.profile.baseTown || rec.profile.area || "",
+      team, T, nMods: T.modules.length, area: rec.profile.baseTown || rec.profile.area || "",
       phone: rec.profile.phone || "", email: rec.profile.email || "",
       perModule, attempts, allowed, passed, modulesDone, quizzesPassed, readingSec,
       totalSec: rec.totalSec || 0, lastSeenAt: rec.lastSeenAt, online, status, cls, activity,
@@ -119,7 +129,7 @@
   // ---------------------------------------------------------------- state & routing
   let data = [];           // summaries
   let unwatch = null;
-  const ui = { tab: "managers", q: "", status: "all", sort: "lastSeenAt", dir: -1 };
+  const ui = { tab: "managers", q: "", status: "all", team: "all", aTeam: "", sort: "lastSeenAt", dir: -1 };
   try { Object.assign(ui, JSON.parse(sessionStorage.getItem("k1i:adminui") || "{}")); } catch { }
   const saveUi = () => { try { sessionStorage.setItem("k1i:adminui", JSON.stringify(ui)); } catch { } };
 
@@ -144,9 +154,10 @@
 
   // ---------------------------------------------------------------- login
   async function boot() {
-    document.getElementById("brandSub").textContent = `${CFG.teamName} · ${CFG.companyName}`;
+    document.getElementById("brandSub").textContent = CFG.companyName;
     app.innerHTML = `<section class="card"><p class="muted">Loading…</p></section>`;
-    await Store.init();
+    await Promise.all([Store.init(), Store.loadAllTeamContent()]);
+    if (!teamsWithContent().includes(ui.aTeam)) ui.aTeam = teamsWithContent()[0] || "";
     const who = await Store.currentAdmin();
     if (who) return start(who);
     renderLogin();
@@ -221,20 +232,33 @@
   };
 
   // ---------------------------------------------------------------- list view
-  const STATUSES = ["Not started", "Reading", "Ready for final", "In final assessment", "Passed", "Failed — can retake", "Failed — no attempts left"];
+  const STATUSES = ["Not started", "Reading", "Ready for final", "In final assessment", "Passed", "Failed — can retake", "Failed — no attempts left", "Awaiting team content"];
+  /** Managers in the team selected at the top of the list view. */
+  const scoped = () => ui.team === "all" ? data : data.filter((s) => s.team === ui.team);
+  const allRead = (s) => s.nMods > 0 && s.modulesDone === s.nMods;
 
   function renderList() {
-    const n = data.length;
+    const sd = scoped();
+    const n = sd.length;
     const kpi = {
-      online: data.filter((s) => s.online).length,
-      read: data.filter((s) => s.modulesDone === MODULES.length).length,
-      mq: data.filter((s) => s.quizzesPassed === MODULES.length).length,
-      passed: data.filter((s) => s.passed).length,
-      failedNotRead: data.filter((s) => s.notReadFails > 0).length,
-      avgRead: avg(data.filter((s) => s.readingSec > 0).map((s) => s.readingSec))
+      online: sd.filter((s) => s.online).length,
+      read: sd.filter(allRead).length,
+      mq: sd.filter((s) => s.nMods > 0 && s.quizzesPassed === s.nMods).length,
+      passed: sd.filter((s) => s.passed).length,
+      failedNotRead: sd.filter((s) => s.notReadFails > 0).length,
+      avgRead: avg(sd.filter((s) => s.readingSec > 0).map((s) => s.readingSec))
     };
+    const counts = {};
+    data.forEach((s) => { counts[s.team] = (counts[s.team] || 0) + 1; });
 
     app.innerHTML = `
+      <div class="toolbar team-bar">
+        <label for="teamSel" class="small" style="margin:0">Team</label>
+        <select id="teamSel" aria-label="Show team">
+          <option value="all">All teams (${data.length})</option>
+          ${Store.teamNames().map((t) => `<option value="${esc(t)}" ${ui.team === t ? "selected" : ""}>${esc(t)} (${counts[t] || 0})${window.K1Content.teams[t] ? "" : " — no content yet"}</option>`).join("")}
+        </select>
+      </div>
       <div class="stats kpis">
         <div class="stat"><div class="k">Managers enrolled</div><div class="v">${n}</div></div>
         <div class="stat"><div class="k">Online now</div><div class="v"><span class="online-dot ${kpi.online ? "on" : ""}"></span>${kpi.online}</div></div>
@@ -252,6 +276,11 @@
       <section class="card tab-card" id="tabBody"></section>`;
 
     app.querySelectorAll("[data-tab]").forEach((b) => b.onclick = () => { ui.tab = b.dataset.tab; saveUi(); renderList(); });
+    document.getElementById("teamSel").onchange = (e) => {
+      ui.team = e.target.value;
+      if (window.K1Content.teams[ui.team]) ui.aTeam = ui.team;   // analytics follow the selected team
+      saveUi(); renderList();
+    };
     if (ui.tab === "modules") renderModuleAnalytics();
     else if (ui.tab === "questions") renderQuestionAnalytics();
     else renderManagers();
@@ -269,7 +298,8 @@
     // Phone search ignores formatting and treats +92 / 0092 / 0 prefixes alike.
     const normPhone = (v) => String(v).replace(/\D/g, "").replace(/^(0092|92)/, "0");
     const qd = normPhone(q);
-    let rows = data.filter((s) =>
+    const sd = scoped();
+    let rows = sd.filter((s) =>
       (!q || [s.name, s.id, s.area, s.team, s.phone, s.email].some((v) => String(v).toLowerCase().includes(q))
         || (qd.length >= 3 && normPhone(s.phone).includes(qd))) &&
       (ui.status === "all" || s.status === ui.status || (ui.status === "online" && s.online)));
@@ -290,8 +320,8 @@
           ${STATUSES.map((s) => `<option ${ui.status === s ? "selected" : ""}>${s}</option>`).join("")}
         </select>
         <span class="spacer"></span>
-        <button class="btn ghost small" id="csvSummary" ${data.length ? "" : "disabled"}>Export summary CSV</button>
-        <button class="btn ghost small" id="csvModules" ${data.length ? "" : "disabled"}>Export module detail CSV</button>
+        <button class="btn ghost small" id="csvSummary" ${scoped().length ? "" : "disabled"}>Export summary CSV</button>
+        <button class="btn ghost small" id="csvModules" ${scoped().length ? "" : "disabled"}>Export module detail CSV</button>
       </div>
       <div class="table-wrap"><table class="data sortable">
         <thead><tr>${COLS.map(([k, l]) => `<th data-sort="${k}" class="${ui.sort === k ? "sorted" : ""}" tabindex="0">${l}${ui.sort === k ? (ui.dir > 0 ? " ▲" : " ▼") : ""}</th>`).join("")}<th>Now</th></tr></thead>
@@ -300,8 +330,8 @@
           <td><strong>${esc(s.name)}</strong><div class="small muted">${esc(s.id)}</div></td>
           <td>${esc(s.team) || "—"}<div class="small muted">${esc(s.area)}</div></td>
           <td class="small">${s.phone ? esc(s.phone) : `<span class="muted">—</span>`}<div class="muted">${esc(s.email)}</div></td>
-          <td><div class="mini-progress"><span style="width:${(s.modulesDone / MODULES.length) * 100}%"></span></div>${s.modulesDone}/${MODULES.length}</td>
-          <td>${s.quizzesPassed}/${MODULES.length}</td>
+          <td>${s.nMods ? `<div class="mini-progress"><span style="width:${(s.modulesDone / s.nMods) * 100}%"></span></div>${s.modulesDone}/${s.nMods}` : `<span class="muted">—</span>`}</td>
+          <td>${s.nMods ? `${s.quizzesPassed}/${s.nMods}` : `<span class="muted">—</span>`}</td>
           <td>${hms(s.readingSec)}</td>
           <td>${hms(s.totalSec)}</td>
           <td><span class="badge ${s.cls}">${esc(s.status)}</span>${s.notReadFails ? ` <span class="badge bad" title="Attempted the final without reading">not read</span>` : ""}${s.rushed ? ` <span class="badge warn" title="Answered faster than ${FQ.minSecondsPerQuestion}s per question">rushed</span>` : ""}</td>
@@ -309,10 +339,10 @@
           <td>${s.attempts.length}/${s.allowed}</td>
           <td><span class="online-dot ${s.online ? "on" : ""}"></span>${ago(s.lastSeenAt)}</td>
           <td class="small">${s.online ? esc(s.activity) : "—"}</td>
-        </tr>`).join("") || `<tr><td colspan="${COLS.length + 1}" class="muted">${data.length ? "No managers match the filters." : "No managers have signed in yet."}</td></tr>`}
+        </tr>`).join("") || `<tr><td colspan="${COLS.length + 1}" class="muted">${sd.length ? "No managers match the filters." : "No managers have signed in yet."}</td></tr>`}
         </tbody>
       </table></div>
-      <p class="small muted">${rows.length} of ${data.length} managers · click a row for full detail · updates live.</p>`;
+      <p class="small muted">${rows.length} of ${sd.length} managers${ui.team === "all" ? "" : ` in ${esc(ui.team)}`} · click a row for full detail · updates live.</p>`;
 
     const sb = document.getElementById("searchBox");
     sb.oninput = () => { ui.q = sb.value; saveUi(); renderManagers(); const s = document.getElementById("searchBox"); s.focus(); s.setSelectionRange(s.value.length, s.value.length); };
@@ -329,8 +359,27 @@
     const c2 = document.getElementById("csvModules"); if (c2) c2.onclick = exportModules;
   }
 
+  /** Analytics need one team's modules; returns its pieces plus a team picker. */
+  function analyticsTeam() {
+    const teams = teamsWithContent();
+    if (!teams.includes(ui.aTeam)) ui.aTeam = teams[0] || "";
+    const T = tc(ui.aTeam);
+    const td = data.filter((s) => s.team === ui.aTeam);
+    const picker = `<div class="toolbar"><label for="aTeamSel" class="small" style="margin:0">Analytics for</label>
+      <select id="aTeamSel">${teams.map((t) => `<option ${t === ui.aTeam ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>
+      <span class="small muted">${td.length} manager(s)</span></div>`;
+    return { T, td, picker };
+  }
+  function bindAnalyticsPicker(rerender) {
+    const sel = document.getElementById("aTeamSel");
+    if (sel) sel.onchange = (e) => { ui.aTeam = e.target.value; saveUi(); rerender(); };
+  }
+
   function renderModuleAnalytics() {
     const body = document.getElementById("tabBody");
+    const { T, td: data, picker } = analyticsTeam();
+    const MODULES = T.modules, QUESTIONS = T.questions, requiredSec = T.required;
+    if (!MODULES.length) { body.innerHTML = `<p class="muted">No team has induction content yet.</p>`; return; }
     const rows = MODULES.map((m, i) => {
       const per = data.map((s) => s.perModule[i]);
       const done = per.filter((p) => p.completedAt);
@@ -352,8 +401,8 @@
     });
     const n = data.length || 1;
     const pctCls = (v, mark) => v == null ? "neutral" : v >= mark ? "ok" : "bad";
-    body.innerHTML = `
-      <p class="small muted">How every module is performing across all ${data.length} managers. Low first-try or final-assessment scores point to content that needs more coaching.</p>
+    body.innerHTML = `${picker}
+      <p class="small muted">How every ${esc(ui.aTeam)} module is performing across its ${data.length} manager(s). Low first-try or final-assessment scores point to content that needs more coaching.</p>
       <div class="table-wrap"><table class="data">
         <tr><th>Module</th><th>Opened</th><th>Completed</th><th>Avg reading time (completers)</th><th>Min. required</th>
           <th>Quiz taken</th><th>Quiz passed</th><th>Avg 1st-try score</th><th>Avg best score</th><th>Avg tries</th><th>Final-assessment correct</th></tr>
@@ -371,10 +420,14 @@
           <td><span class="badge ${pctCls(r.finalPct, FQ.passPercent)}">${r.finalPct == null ? "—" : r.finalPct + "%"}</span></td>
         </tr>`).join("")}
       </table></div>`;
+    bindAnalyticsPicker(renderModuleAnalytics);
   }
 
   function renderQuestionAnalytics() {
     const body = document.getElementById("tabBody");
+    const { T, td: data, picker } = analyticsTeam();
+    const QUESTIONS = T.questions;
+    const modIndex = (id) => T.modules.findIndex((m) => m.id === id);
     const stats = QUESTIONS.map((q, i) => ({ q, i, asked: 0, right: 0, picks: q.options.map(() => 0), blank: 0 }));
     const add = (r) => { const s = stats[r.qi]; if (!s) return; s.asked++; if (r.chosen === null || r.chosen === undefined) s.blank++; else { s.picks[r.chosen]++; if (r.chosen === s.q.answer) s.right++; } };
     data.forEach((s) => {
@@ -382,8 +435,8 @@
       s.perModule.forEach((p) => p.quizAttempts.forEach((a) => (a.review || []).forEach(add)));
     });
     const rows = stats.filter((s) => s.asked).sort((a, b) => a.right / a.asked - b.right / b.asked);
-    body.innerHTML = `
-      <p class="small muted">Every question answered in module quizzes and final assessments, hardest first. "Most common wrong answer" shows the misconception to coach on.</p>
+    body.innerHTML = `${picker}
+      <p class="small muted">Every ${esc(ui.aTeam)} question answered in module quizzes and final assessments, hardest first. "Most common wrong answer" shows the misconception to coach on.</p>
       <div class="table-wrap"><table class="data wrap">
         <tr><th>Module</th><th>Question</th><th>Asked</th><th>Correct</th><th>Most common wrong answer</th></tr>
         ${rows.map((s) => {
@@ -399,6 +452,7 @@
           </tr>`;
         }).join("") || `<tr><td colspan="5" class="muted">No quiz answers yet.</td></tr>`}
       </table></div>`;
+    bindAnalyticsPicker(renderQuestionAnalytics);
   }
 
   // ---------------------------------------------------------------- detail view
@@ -409,6 +463,8 @@
       return;
     }
     const rec = s.rec;
+    const MODULES = s.T.modules;
+    const modById = (mid) => MODULES.find((m) => m.id === mid);
     app.innerHTML = `
       <section class="card">
         <div class="reader-head">
@@ -494,7 +550,7 @@
     document.getElementById("actPin").onclick = () => modal("Reset PIN?",
       `<p>${esc(s.name)} will be asked to choose a new PIN the next time they sign in. Their progress is kept.</p>`,
       [{ label: "Cancel", cls: "ghost" }, { label: "Reset PIN", onClick: () => act(() => Store.updateManager(s.id, { pinHash: null }), "PIN reset. The manager will set a new PIN at next sign-in.") }]);
-    document.getElementById("actJson").onclick = () => download(`k1-induction-${s.id}.json`, JSON.stringify(Object.assign({}, rec, { pinHash: rec.pinHash ? "(set)" : null }), null, 2), "application/json");
+    document.getElementById("actJson").onclick = () => download(`induction-${s.id}.json`, JSON.stringify(Object.assign({}, rec, { pinHash: rec.pinHash ? "(set)" : null }), null, 2), "application/json");
     document.getElementById("actDelete").onclick = () => modal("Delete this record?",
       `<p>This permanently deletes <strong>${esc(s.name)} (${esc(s.id)})</strong> — all reading time, quiz attempts and results. It cannot be undone.</p>
        <div class="field"><label for="confirmId">Type the Employee ID to confirm</label><input id="confirmId" type="text"></div>`,
@@ -515,16 +571,16 @@
   function exportSummary() {
     const head = ["Name", "Employee ID", "Team", "Base town", "Cell number", "Email", "Enrolled", "Last active", "Modules read", "Module quizzes passed", "Reading time (min)", "Screen time (min)",
       "Final status", "Best final %", "Final attempts used", "Final attempts allowed", "Failed without reading", "Rushed flag"];
-    const rows = data.map((s) => [s.name, s.id, s.team, s.area, s.phone, s.email, fmtDate(s.createdAt), fmtDate(s.lastSeenAt), s.modulesDone, s.quizzesPassed,
+    const rows = scoped().map((s) => [s.name, s.id, s.team, s.area, s.phone, s.email, fmtDate(s.createdAt), fmtDate(s.lastSeenAt), s.modulesDone, s.quizzesPassed,
       (s.readingSec / 60).toFixed(1), (s.totalSec / 60).toFixed(1), s.status, s.best ?? "", s.attempts.length, s.allowed, s.notReadFails ? "Yes" : "No", s.rushed ? "Yes" : "No"]);
-    download(`khyber1-induction-summary-${new Date().toISOString().slice(0, 10)}.csv`, csv([head, ...rows]), "text/csv");
+    download(`induction-summary-${ui.team === "all" ? "all-teams" : ui.team}-${new Date().toISOString().slice(0, 10)}.csv`, csv([head, ...rows]), "text/csv");
   }
   function exportModules() {
     const head = ["Name", "Employee ID", "Team", "Base town", "Module #", "Module", "Screen time (min)", "Required (min)", "Read to end", "Completed at",
       "Module quiz attempts", "First-try %", "Best %", "Module quiz passed"];
-    const rows = data.flatMap((s) => s.perModule.map((p, i) => [s.name, s.id, s.team, s.area, i + 1, p.title, (p.sec / 60).toFixed(1), (p.required / 60).toFixed(1),
+    const rows = scoped().flatMap((s) => s.perModule.map((p, i) => [s.name, s.id, s.team, s.area, i + 1, p.title, (p.sec / 60).toFixed(1), (p.required / 60).toFixed(1),
       p.scrolledEnd ? "Yes" : "No", fmtDate(p.completedAt), p.quizAttempts.length, p.quizFirst ?? "", p.quizBest ?? "", p.quizPassedAt ? "Yes" : "No"]));
-    download(`khyber1-induction-modules-${new Date().toISOString().slice(0, 10)}.csv`, csv([head, ...rows]), "text/csv");
+    download(`induction-modules-${ui.team === "all" ? "all-teams" : ui.team}-${new Date().toISOString().slice(0, 10)}.csv`, csv([head, ...rows]), "text/csv");
   }
 
   boot();

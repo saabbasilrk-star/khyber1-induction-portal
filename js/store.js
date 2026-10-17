@@ -145,6 +145,32 @@
     }
   };
 
+  /* ---------- team content ---------- */
+  const teamDef = (name) => ((window.CONFIG && window.CONFIG.teams) || []).find((t) => t.name === name) || null;
+  Store.teamNames = () => ((window.CONFIG && window.CONFIG.teams) || []).map((t) => t.name);
+  Store.isKnownTeam = (name) => !!teamDef(name);
+  Store.teamHasContent = (name) => !!(teamDef(name) && teamDef(name).content);
+  const loading = {};
+  /** Loads a team's modules/questions (js/teams/*.js). Resolves to {modules, questions} or null if the team has none yet. */
+  Store.loadTeamContent = function (name) {
+    const reg = window.K1Content.teams;
+    if (reg[name]) return Promise.resolve(reg[name]);
+    const def = teamDef(name);
+    if (!def || !def.content) return Promise.resolve(null);
+    if (!loading[name]) {
+      loading[name] = new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = def.content + "?v=" + (window.CONFIG.contentVersion || "");
+        s.onload = () => resolve(reg[name] || null);
+        s.onerror = () => { delete loading[name]; reject(new Error("Couldn't load the modules for " + name + ". Check your connection and reload.")); };
+        document.head.appendChild(s);
+      });
+    }
+    return loading[name];
+  };
+  /** Loads every team that has content (admin portal). */
+  Store.loadAllTeamContent = () => Promise.all(Store.teamNames().filter(Store.teamHasContent).map((n) => Store.loadTeamContent(n).catch(() => null)));
+
   /* ---------- helpers shared by both portals ---------- */
   Store.requiredSeconds = function (modules, config) {
     const out = {};

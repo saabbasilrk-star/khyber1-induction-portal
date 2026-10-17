@@ -160,6 +160,10 @@ input:focus-visible, button:focus-visible { outline: 3px solid var(--primary-sof
   background: var(--surface-2); font-weight: 700;
 }
 .module-item.done .module-num { background: var(--ok); color: #fff; }
+.module-item.locked { cursor: not-allowed; background: var(--surface-2); border-style: dashed; }
+.module-item.locked:hover { border-color: var(--border); }
+.module-item.locked strong, .module-item.locked .module-meta { color: var(--muted); }
+.module-item.locked .module-num { font-size: .95rem; }
 .module-meta { font-size: .82rem; color: var(--muted); }
 .module-item .progress { margin-top: 6px; }
 

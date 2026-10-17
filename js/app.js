@@ -1,15 +1,24 @@
-/* Khyber-1 FLM Induction — manager portal.
-   Progress is kept in memory, cached on the device every few seconds and synced
-   to the cloud (Firebase) via js/store.js, so a manager can close the page and
-   resume exactly where they left off — same module, scroll position, quiz
-   question and answers — on this or any other device. */
+/* Shaigan Managerial Induction Training Portal — manager portal.
+   Each manager sees the modules of their own team (js/teams/*.js), opened
+   strictly in sequence. Progress is kept in memory, cached on the device every
+   few seconds and synced to the cloud (Firebase) via js/store.js, so a manager
+   can close the page and resume exactly where they left off — same module,
+   scroll position, quiz question and answers — on this or any other device. */
 (function () {
   "use strict";
 
   const CFG = window.CONFIG;
-  const MODULES = window.MODULES;
-  const QUESTIONS = window.QUESTIONS;
   const Store = window.K1Store;
+  // Set per signed-in manager from their team's content file (see setTeamContent).
+  let MODULES = [];
+  let QUESTIONS = [];
+  let requiredSec = {};
+  function setTeamContent(c) {
+    MODULES = c ? c.modules : [];
+    QUESTIONS = c ? c.questions : [];
+    requiredSec = Store.requiredSeconds(MODULES, CFG);
+  }
+  const hasContent = () => MODULES.length > 0;
   const FQ = Object.assign({ timerPausesWhenClosed: false }, CFG.quiz);
   const MQ = Object.assign({ questions: 5, secondsPerQuestion: 60, passPercent: 70, maxAttempts: 0, timerPausesWhenClosed: true }, CFG.moduleQuiz || {});
   const SYNC_MS = (CFG.syncSeconds || 20) * 1000;
@@ -25,7 +34,6 @@
   const shuffle = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   const modById = (id) => MODULES.find((m) => m.id === id);
   const modIndex = (id) => MODULES.findIndex((m) => m.id === id);
-  const requiredSec = Store.requiredSeconds(MODULES, CFG);
   // We restore scroll positions ourselves; stop the browser resetting them after load.
   try { history.scrollRestoration = "manual"; } catch { }
 
@@ -55,7 +63,7 @@
   const modState = (id) => user.modules[id];
   const isDone = (id) => !!modState(id).completedAt;
   const doneCount = () => MODULES.filter((m) => isDone(m.id)).length;
-  const allRead = () => doneCount() === MODULES.length;
+  const allRead = () => hasContent() && doneCount() === MODULES.length;
   const readingSec = () => MODULES.reduce((t, m) => t + modState(m.id).sec, 0);
   const mqPassed = (id) => !!modState(id).quiz.passedAt;
   const mqPassedCount = () => MODULES.filter((m) => mqPassed(m.id)).length;
@@ -64,6 +72,21 @@
   const finalAllowed = () => FQ.maxAttempts + (user.extraAttempts || 0);
   const finalLeft = () => finalAllowed() - user.attempts.length;
   const finalEligible = () => allRead() && (!CFG.requireModuleQuizzesForFinal || mqPassedCount() === MODULES.length);
+
+  // ---- sequential unlocking
+  const UNLOCK = CFG.unlockNextModuleAfterQuiz === "pass" ? "pass" : "attempt";
+  const quizSatisfied = (id) => UNLOCK === "pass" ? mqPassed(id) : modState(id).quiz.attempts.length > 0;
+  /** A module's step is finished once it's read AND its quiz is attempted/passed. */
+  const stepDone = (id) => isDone(id) && quizSatisfied(id);
+  /** Open if it's the first module, already completed (re-reading), or every earlier step is finished. */
+  function isUnlocked(id) {
+    const i = modIndex(id);
+    if (i <= 0 || isDone(id)) return true;
+    return MODULES.slice(0, i).every((m) => stepDone(m.id));
+  }
+  /** The module blocking `id`, i.e. the first earlier module whose step isn't finished. */
+  const blocker = (id) => MODULES.slice(0, modIndex(id)).find((m) => !stepDone(m.id));
+  const unlockHint = (m) => `Complete Module ${modIndex(m.id) + 1} (${m.title}) and ${UNLOCK === "pass" ? "pass" : "attempt"} its quiz to unlock.`;
 
   function checkModuleComplete(id) {
     const s = modState(id);
@@ -198,8 +221,15 @@
     document.getElementById("userChip").textContent = `${user.profile.name} · ${user.profile.empId}`;
 
     const r = currentRoute();
+    // Team without induction content yet.
+    if (!hasContent()) { if (r.name !== "home") return go("#/"); return renderComingSoon(); }
     // While a quiz is running, the manager cannot go back to the content.
     if (user.activeQuiz && r.name !== "quiz") return go("#/quiz");
+    // Modules open strictly in sequence.
+    if (r.name === "module" && modById(r.id) && !isUnlocked(r.id)) {
+      toast(`🔒 ${esc(unlockHint(blocker(r.id)))}`);
+      return go("#/");
+    }
 
     user.resume = { hash: location.hash || "#/", scrollY: pendingScroll || 0, at: Date.now() };
     saveUser(false);
@@ -322,9 +352,20 @@
     } catch (e) { modal("Couldn't continue", `<p>${esc(e.message || e)}</p>`, [{ label: "OK" }]); }
   }
 
-  function beginSession(rec, isNew) {
+  /** Loads the manager's team modules; shows an error and returns false if that fails. */
+  async function loadTeamFor(rec) {
+    try { setTeamContent(await Store.loadTeamContent(rec.profile.team)); return true; }
+    catch (e) {
+      modal("Couldn't load your modules", `<p>${esc(e.message || e)}</p>`, [{ label: "Retry", onClick: () => location.reload() }]);
+      return false;
+    }
+  }
+
+  async function beginSession(rec, isNew) {
+    if (!(await loadTeamFor(rec))) return;
     user = normalize(rec);
     attachSession();
+    if (!hasContent()) return go("#/");
     const r = user.resume;
     if (!isNew && r && r.hash && r.hash !== "#/" && !/^#\/result/.test(r.hash)) {
       pendingScroll = r.scrollY || 0;
@@ -369,11 +410,12 @@
       <div class="grid grid-2">
         <section class="card">
           <h1>${esc(CFG.programmeTitle)}</h1>
-          <p class="muted">Product-knowledge induction for newly appointed First Line Managers of the ${esc(CFG.teamName)} team.</p>
+          <p class="muted">Induction training for newly appointed managers of ${esc(CFG.companyName)}. You'll study the modules prepared for <strong>your team</strong>.</p>
           <h3>How it works</h3>
           <ol>
-            <li>Read all <strong>${MODULES.length} modules</strong>. Each one has a minimum <em>active</em> reading time and must be scrolled to the end.</li>
-            <li>After each module, take its <strong>module quiz</strong> (${MQ.questions} questions) straight away to check your understanding.</li>
+            <li>Sign in with your Employee ID and select your <strong>team</strong> — you'll see your team's induction modules.</li>
+            <li>Modules open <strong>one at a time, in order</strong>. Each has a minimum <em>active</em> reading time and must be scrolled to the end.</li>
+            <li>After each module, take its <strong>module quiz</strong> (${MQ.questions} questions). The next module unlocks once you've ${UNLOCK === "pass" ? "passed" : "attempted"} the quiz.</li>
             <li>The <strong>screen timer</strong> only runs while this tab is open, focused and you are active. It pauses after ${CFG.idleTimeoutSeconds}s of no activity.</li>
             <li>Take the <strong>final assessment</strong>: ${FQ.questionsPerAttempt} questions, ${FQ.timeLimitMinutes} minutes, pass mark ${FQ.passPercent}%, up to ${FQ.maxAttempts} attempts.</li>
             <li>You can close the page any time — sign in again with your Employee ID and PIN to <strong>resume exactly where you left off</strong>${Store.mode === "cloud" ? ", on any device" : ""}.</li>
@@ -436,16 +478,20 @@
   const town = (p) => p.baseTown || p.area || "";
   const phoneOk = (v) => /^(92|0)?3\d{9}$/.test(v.replace(/\D/g, ""));
   const emailOk = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
-  const profileIncomplete = (p) => !(p.name && p.team && town(p) && p.phone && p.email);
+  const profileIncomplete = (p) => !(p.name && Store.isKnownTeam(p.team) && town(p) && p.phone && p.email);
 
   function profileFieldsHtml(p) {
     p = p || {};
-    const teams = (CFG.teams && CFG.teams.length ? CFG.teams : [CFG.teamName]);
+    // A manager's team decides their modules, so it can't be changed once set.
+    const locked = Store.isKnownTeam(p.team);
     return `
       <div class="field"><label for="fName">Full name</label><input id="fName" type="text" required maxlength="80" autocomplete="name" value="${esc(p.name || "")}"></div>
       <div class="field"><label for="fTeam">Team</label>
-        <input id="fTeam" type="text" required maxlength="40" list="teamList" value="${esc(p.team || teams[0])}">
-        <datalist id="teamList">${teams.map((t) => `<option value="${esc(t)}">`).join("")}</datalist></div>
+        <select id="fTeam" required ${locked ? "disabled" : ""}>
+          ${locked ? "" : `<option value="" selected disabled>Select your team…</option>`}
+          ${Store.teamNames().map((t) => `<option ${t === p.team ? "selected" : ""}>${esc(t)}</option>`).join("")}
+        </select>
+        <div class="small muted" style="margin-top:4px">${locked ? "Your team is fixed — contact the administrator if it's wrong." : "Your induction modules depend on your team, so choose carefully — it can't be changed later."}</div></div>
       <div class="field"><label for="fTown">Base town</label><input id="fTown" type="text" required maxlength="60" value="${esc(town(p))}"></div>
       <div class="field"><label for="fPhone">Cell number</label><input id="fPhone" type="tel" required maxlength="20" inputmode="tel" autocomplete="tel" placeholder="03XX-XXXXXXX" value="${esc(p.phone || "")}"></div>
       <div class="field"><label for="fEmail">Email address</label><input id="fEmail" type="email" required maxlength="100" autocomplete="email" placeholder="name@example.com" value="${esc(p.email || "")}"></div>`;
@@ -457,7 +503,7 @@
     const p = { name: v("fName"), team: v("fTeam"), baseTown: v("fTown"), phone: v("fPhone"), email: v("fEmail").toLowerCase() };
     const bad = (field, msg) => { modal("Please check your details", `<p>${msg}</p>`, [{ label: "OK", onClick: () => document.getElementById(field).focus() }]); return null; };
     if (p.name.length < 3) return bad("fName", "Please enter your full name.");
-    if (!p.team) return bad("fTeam", "Please enter your team.");
+    if (!Store.isKnownTeam(p.team)) return bad("fTeam", "Please select your team from the list.");
     if (!p.baseTown) return bad("fTown", "Please enter your base town.");
     if (!phoneOk(p.phone)) return bad("fPhone", "Please enter a valid mobile number, e.g. <strong>0300-1234567</strong>.");
     if (!emailOk(p.email)) return bad("fEmail", "Please enter a valid email address, e.g. <strong>name@example.com</strong>.");
@@ -577,17 +623,31 @@
     return `<span class="badge neutral">Quiz locked</span>`;
   }
 
+  /** The manager's next step in the sequence: read the next module, or take its quiz. */
   function resumeTarget() {
-    const r = user.resume;
-    if (r && r.hash && /^#\/module\//.test(r.hash)) {
-      const id = r.hash.split("/")[2];
-      if (modById(id) && !isDone(id)) return { hash: r.hash, label: `Continue ${modById(id).title}` };
+    const step = MODULES.find((m) => !stepDone(m.id));
+    if (step) {
+      const n = modIndex(step.id) + 1;
+      if (!isDone(step.id)) return { hash: "#/module/" + step.id, label: modState(step.id).sec || n > 1 ? `Continue: Module ${n} — ${step.title}` : "Start Module 1" };
+      return { quiz: step.id, label: `Take the Module ${n} quiz to unlock the next module` };
     }
-    const next = MODULES.find((m) => !isDone(m.id));
-    if (next) return { hash: "#/module/" + next.id, label: doneCount() || readingSec() ? `Continue: ${next.title}` : "Start reading" };
     const q = MODULES.find((m) => !mqPassed(m.id));
-    if (q) return { quiz: q.id, label: `Next: ${q.title} quiz` };
+    if (q) return { quiz: q.id, label: `Improve: retake the Module ${modIndex(q.id) + 1} quiz` };
     return null;
+  }
+
+  function renderComingSoon() {
+    const t = user.profile.team;
+    app.innerHTML = `
+      <section class="card">
+        <h1>Welcome, ${esc(user.profile.name.split(" ")[0])}</h1>
+        <p class="muted">${esc(t)} · ${esc(town(user.profile))}</p>
+        <div class="notice info">
+          <strong>Your team's induction modules are being prepared.</strong><br>
+          The ${esc(t)} programme isn't published yet. Your profile is saved — sign in again with your Employee ID and PIN once your manager or the training team tells you it's available.
+        </div>
+        <p class="small muted">Registered ${fmtDate(user.profile.createdAt)} · Employee ID ${esc(user.profile.empId)}</p>
+      </section>`;
   }
 
   function renderDashboard() {
@@ -601,7 +661,7 @@
     app.innerHTML = `
       <section class="card">
         <h1>Welcome, ${esc(user.profile.name.split(" ")[0])}</h1>
-        <p class="muted">${esc(CFG.programmeTitle)} · ${esc(user.profile.team || CFG.teamName)} · ${esc(town(user.profile))}</p>
+        <p class="muted">${esc(user.profile.team)} induction · ${esc(town(user.profile))}</p>
         <div class="progress" aria-label="Reading progress"><span style="width:${(done / MODULES.length) * 100}%"></span></div>
         <div class="stats">
           <div class="stat"><div class="k">Modules read</div><div class="v">${done} / ${MODULES.length}</div></div>
@@ -616,23 +676,25 @@
       </section>
 
       <section class="card">
-        <h2>Programme content</h2>
-        <p class="small muted">Each module's quiz unlocks as soon as you finish reading it.</p>
+        <h2>${esc(user.profile.team)} programme</h2>
+        <p class="small muted">Modules open one at a time, in order. Finish reading a module and ${UNLOCK === "pass" ? "pass" : "attempt"} its quiz to unlock the next one.</p>
         <ul class="module-list">
           ${MODULES.map((m, i) => {
             const s = modState(m.id), req = requiredSec[m.id], pct = Math.min(100, (s.sec / req) * 100);
-            const status = isDone(m.id) ? `<span class="badge ok">Read</span>`
-              : s.sec > 0 ? `<span class="badge warn">In progress</span>` : `<span class="badge neutral">Not started</span>`;
-            const canQuiz = isDone(m.id) && (MQ.maxAttempts === 0 || s.quiz.attempts.length < MQ.maxAttempts);
-            return `<li class="module-item ${isDone(m.id) ? "done" : ""}" data-id="${m.id}" tabindex="0">
-              <div class="module-num">${isDone(m.id) ? "✓" : i + 1}</div>
+            const open = isUnlocked(m.id);
+            const status = !open ? `<span class="badge neutral">🔒 Locked</span>`
+              : isDone(m.id) ? `<span class="badge ok">Read</span>`
+              : s.sec > 0 ? `<span class="badge warn">In progress</span>` : `<span class="badge info">Unlocked</span>`;
+            const canQuiz = open && isDone(m.id) && (MQ.maxAttempts === 0 || s.quiz.attempts.length < MQ.maxAttempts);
+            return `<li class="module-item ${isDone(m.id) ? "done" : ""} ${open ? "" : "locked"}" data-id="${m.id}" ${open ? `tabindex="0"` : `aria-disabled="true" title="${esc(unlockHint(blocker(m.id)))}"`}>
+              <div class="module-num">${!open ? "🔒" : isDone(m.id) ? "✓" : i + 1}</div>
               <div>
-                <div><strong>${esc(m.title)}</strong></div>
-                <div class="module-meta">${esc(m.summary)} · min. ${ms(req)} reading · read ${ms(s.sec)}</div>
-                <div class="progress"><span style="width:${pct}%"></span></div>
+                <div><strong>Module ${i + 1}: ${esc(m.title)}</strong></div>
+                <div class="module-meta">${open ? `${esc(m.summary)} · min. ${ms(req)} reading · read ${ms(s.sec)}` : esc(unlockHint(blocker(m.id)))}</div>
+                ${open ? `<div class="progress"><span style="width:${pct}%"></span></div>` : ""}
               </div>
               <div class="module-actions">
-                <div class="badges">${status}${quizBadge(m.id)}</div>
+                <div class="badges">${status}${open ? quizBadge(m.id) : ""}</div>
                 ${canQuiz ? `<button class="btn small ${s.quiz.passedAt ? "ghost" : ""}" data-quiz="${m.id}">${s.quiz.attempts.length ? "Retake quiz" : "Take quiz"}</button>` : ""}
               </div>
             </li>`;
@@ -662,6 +724,10 @@
       </section>`;
 
     app.querySelectorAll(".module-item").forEach((el) => {
+      if (el.classList.contains("locked")) {
+        el.onclick = () => toast(`🔒 ${esc(unlockHint(blocker(el.dataset.id)))}`);
+        return;
+      }
       const open = () => go("#/module/" + el.dataset.id);
       el.onclick = open;
       el.onkeydown = (e) => { if (e.key === "Enter" && e.target === el) open(); };
@@ -719,11 +785,14 @@
     if (!box) return;
     const idx = modIndex(id), prev = MODULES[idx - 1], next = MODULES[idx + 1];
     const s = modState(id);
+    const nextOpen = next && isUnlocked(next.id);
     const nav = `
       ${prev ? `<a class="btn ghost" href="#/module/${prev.id}">← ${esc(prev.title)}</a>` : ""}
-      ${next ? `<a class="btn ghost" href="#/module/${next.id}">Next: ${esc(next.title)} →</a>` : `<a class="btn ghost" href="#/">Back to dashboard</a>`}`;
+      ${!next ? `<a class="btn ghost" href="#/">Back to dashboard</a>`
+        : nextOpen ? `<a class="btn ${s.quiz.attempts.length ? "" : "ghost"}" href="#/module/${next.id}">Next: ${esc(next.title)} →</a>`
+        : `<button class="btn ghost" disabled title="${esc(unlockHint(blocker(next.id)))}">🔒 Next: ${esc(next.title)}</button>`}`;
     if (!s.completedAt) {
-      box.innerHTML = `<p class="small muted">End of module. The module quiz unlocks once the minimum reading time is met.</p><div class="btn-row">${nav}</div>`;
+      box.innerHTML = `<p class="small muted">End of module. The module quiz unlocks once the minimum reading time is met${next ? "; the next module unlocks after the quiz" : ""}.</p><div class="btn-row">${nav}</div>`;
       return;
     }
     const canQuiz = MQ.maxAttempts === 0 || s.quiz.attempts.length < MQ.maxAttempts;
@@ -731,7 +800,7 @@
       <div class="notice ${s.quiz.passedAt ? "ok" : "info"}">
         ${s.quiz.passedAt
           ? `✓ Module complete and quiz passed (best ${mqBest(id)}%).`
-          : `<strong>✓ Module complete.</strong> Test your understanding now with a ${Math.min(MQ.questions, QUESTIONS.filter((q) => q.module === id).length)}-question quiz on this module.`}
+          : `<strong>✓ Module complete.</strong> Now take the ${Math.min(MQ.questions, QUESTIONS.filter((q) => q.module === id).length)}-question quiz on this module${next && !nextOpen ? ` — the next module unlocks once you've ${UNLOCK === "pass" ? "passed" : "attempted"} it` : ""}.`}
       </div>
       <div class="btn-row">
         ${canQuiz ? `<button class="btn ${s.quiz.passedAt ? "ghost" : ""}" id="mqBtn">${s.quiz.attempts.length ? "Retake module quiz" : "Take module quiz now"}</button>` : ""}
@@ -985,7 +1054,9 @@
         <div class="btn-row no-print">
           ${m ? (a.passed
             ? (next ? `<a class="btn" href="#/module/${next.id}">Next module: ${esc(next.title)} →</a>` : `<a class="btn" href="#/">Go to final assessment</a>`)
-            : `<a class="btn" href="#/module/${m.id}">Review module</a><button class="btn ghost" id="retakeBtn">Retake quiz</button>`) : ""}
+            : `<a class="btn" href="#/module/${m.id}">Review module</a><button class="btn ghost" id="retakeBtn">Retake quiz</button>
+               ${next && isUnlocked(next.id) ? `<a class="btn ghost" href="#/module/${next.id}">Continue to next module →</a>` : ""}
+               ${next && !isUnlocked(next.id) ? `<span class="small muted">🔒 Pass this quiz to unlock the next module.</span>` : ""}`) : ""}
           <a class="btn ghost" href="#/">Back to dashboard</a>
           ${isFinal && a.passed ? `<a class="btn" href="#/certificate">View certificate</a>` : ""}
           ${isFinal && !a.passed && !passedAttempt() && finalLeft() > 0 ? `<span class="muted small">${finalLeft()} attempt(s) remaining.</span>` : ""}
@@ -1017,8 +1088,8 @@
         <h2>Certificate of Completion</h2>
         <p>This certifies that</p>
         <div class="cert-name">${esc(user.profile.name)}</div>
-        <p>Employee ID ${esc(user.profile.empId)} · ${esc(user.profile.team || CFG.teamName)} · ${esc(town(user.profile))}</p>
-        <p>has successfully completed the<br><strong>${esc(CFG.programmeTitle)}</strong></p>
+        <p>Employee ID ${esc(user.profile.empId)} · ${esc(user.profile.team)} · ${esc(town(user.profile))}</p>
+        <p>has successfully completed the <strong>${esc(user.profile.team)}</strong> programme of the<br><strong>${esc(CFG.programmeTitle)}</strong></p>
         <p>Score <strong>${a.scorePct}%</strong> · Reading time ${hms(a.readingSec)} · ${new Date(a.submittedAt).toLocaleDateString()}</p>
       </section>
       <div class="btn-row no-print">
@@ -1030,8 +1101,8 @@
   // ---------------------------------------------------------------- boot
   async function boot() {
     document.getElementById("brandTitle").textContent = CFG.programmeTitle;
-    document.getElementById("brandSub").textContent = `${CFG.teamName} · ${CFG.companyName}`;
-    document.title = `${CFG.teamName} FLM Induction`;
+    document.getElementById("brandSub").textContent = CFG.companyName;
+    document.title = CFG.programmeTitle;
     app.innerHTML = `<section class="card"><p class="muted">Loading…</p></section>`;
 
     await Store.init();
@@ -1045,6 +1116,7 @@
         const { rec } = await loadRecord(id);
         if (rec) {
           if (profileIncomplete(rec.profile)) return renderCompleteProfile(rec);
+          if (!(await loadTeamFor(rec))) return;
           // Same-device reload / reopening the tab: resume silently at the saved position.
           user = normalize(rec);
           const r = user.resume;
